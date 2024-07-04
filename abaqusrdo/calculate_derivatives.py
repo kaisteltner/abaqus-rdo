@@ -384,12 +384,14 @@ class RV(object):
 
 # --------------------------------------------------------------------#
 # MAIN
-def main():
-    args = utils.get_arguments()
+def main(args=None, cfg=None):
+    if not args:
+        args = utils.get_arguments()
 
     # Get parameters for RVs
-    sys.path.append(args.input_dir)
-    import config_rdo as cfg
+    if not cfg:
+        sys.path.append(args.input_dir)
+        import config_rdo as cfg
 
     rdo_work_dir = os.path.join(args.input_dir, "{}_RDO".format(args.job))
     tosca_dirs = os.path.join(rdo_work_dir, "inner_loop", "{:s}_{:03d}".format(args.job, args.cycle), "tosca")
@@ -424,18 +426,7 @@ def main():
         )
     write_status(rdo_work_dir, list_DRESP, args.cycle, cfg.kappa)
 
-    # Remove automatically generated python files for config
-    files = [
-        os.path.join(args.input_dir, "config_rdo$py.class"),
-        os.path.join(args.input_dir, "config_rdo.pyc"),
-        os.path.join(args.input_dir, "__pycache__")
-    ]
-    for fi in files:
-        if os.path.exists(fi):
-            if os.path.isdir(fi):
-                shutil.rmtree(fi)
-            else:
-                os.remove(fi)
+
 
 if __name__ == "__main__":
     main()

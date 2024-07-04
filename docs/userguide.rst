@@ -64,7 +64,7 @@ The following files have to be modified job-specifically for running the RDO:
             ITER_MAX               = 0
         END_
 
-    - ``OPT_PARAM``: Disable filter::
+    - ``OPT_PARAM``: Disable filter if applicable::
 
         OPT_PARAM
             ...

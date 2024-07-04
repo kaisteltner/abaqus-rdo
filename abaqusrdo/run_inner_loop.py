@@ -11,6 +11,8 @@ import glob
 import utils
 import subprocess as sp
 
+import calculate_derivatives as cd
+
 
 # --------------------------------------------------------------------#
 # Scripts and classes
@@ -20,6 +22,32 @@ def create_dir(path, verbose):
         os.mkdir(path)
         if verbose:
             print("Successfully created directory {}".format(path))
+
+
+def move_results(src, dst, verbose=False):
+    """Move results from result dir to parent Tosca work dir."""
+    print("Moving files containing DRESPs and sensitvities to Tosca work dir.", flush=True)
+    result_files = glob.glob(os.path.join(src, "DRESP_*.onf"))
+    for rf in result_files:
+        dst = os.path.join(dst, os.path.split(rf)[1])
+        if verbose:
+            shutil.copy2(rf, dst)
+        else:
+            shutil.move(rf, dst)
+
+
+def clean_input_dir(dir):
+    """Remove compiled python files and pycache."""
+    files = [os.path.join(dir, "__pycache__"),
+        *glob.glob(os.path.join(dir, "*$py.class")),
+        *glob.glob(os.path.join(dir, "*.pyc"))]
+    print(files)
+    for fi in files:
+        if os.path.exists(fi):
+            if os.path.isdir(fi):
+                shutil.rmtree(fi)
+            else:
+                os.remove(fi)
 
 
 class IsightJob:
@@ -112,17 +140,6 @@ class IsightJob:
             )
             shutil.rmtree(previous_dir)
 
-    def _move_results(self):
-        """Move results from result dir to parent Tosca work dir."""
-        print("Moving files containing DRESPs and sensitvities to Tosca work dir.", flush=True)
-        result_files = glob.glob(os.path.join(self.result_dir, "DRESP_*.onf"))
-        for rf in result_files:
-            dst = os.path.join(self.tosca_work_dir, os.path.split(rf)[1])
-            if self.verbose:
-                shutil.copy2(rf, self.tosca_work_dir)
-            else:
-                shutil.move(rf, dst)
-
     def info(self):
         """Display job attributes in terminal -> TOSCA.OUT."""
         print(
@@ -171,7 +188,7 @@ class IsightJob:
             print(complete_isight_call, flush=True)
 
         cp = sp.run(complete_isight_call, shell=True, check=True)
-        self._move_results()
+        # self._move_results()
 
 
 # --------------------------------------------------------------------#
@@ -206,6 +223,17 @@ def main():
 
     job.info()
     job.start()
+
+    # Postprocessing of runs for finite differences
+    args.input_dir = input_dir
+    args.result_dir = job.result_dir
+    cd.main(args, cfg)
+
+    # Move results from inner loop to tosca work dir
+    move_results(job.result_dir, job.tosca_work_dir)
+    clean_input_dir(input_dir)
+
+    print(f"Finished inner loop for cycle {args.cycle}.")
 
 
 # --------------------------------------------------------------------#
