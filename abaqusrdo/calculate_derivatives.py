@@ -88,13 +88,20 @@ def write_status(dst, list_DRESP, cycle, kappa):
     number_of_dresp = len(list_DRESP)
     all_names = [dresp.name for dresp in list_DRESP]
 
-    header_1 = "ITERATION, KAPPA" + (number_of_dresp * ",{},," + ",\n").format(*all_names)
-    header_2 = "," + number_of_dresp * ",DRESP, MU, SIGMA" + ",\n"
+    number_of_modes = len(list_DRESP[0].list_RV)
+
+    header_1 = "ITERATION, KAPPA" + (number_of_dresp * (",{},," + number_of_modes * ",,,") + "\n").format(*all_names)
+    header_2 = ("," + number_of_dresp * 
+                (",DRESP, MU, SIGMA" 
+                 + ''.join([", W{}, MU_{}, SIGMA_{}".format(i, i, i) for i in range(number_of_modes)]))
+                + "\n")
 
     data_line = "{},{}".format(cycle, kappa)
     for dresp in list_DRESP:
-        data_line += ",{},{},{}".format(dresp.objective, dresp.mean, dresp.sigma)
-    data_line += ",\n"
+        data_line += ",{},{},{}".format(dresp.objective, dresp.mean_x, dresp.sigma_x)
+        for mode in range(number_of_modes):
+            data_line += ",{},{},{}".format(dresp.weights[mode], dresp.mean[mode], dresp.sigma[mode])
+    data_line += "\n"
 
     if not os.path.exists(file):
         with open(file, "w") as f:
@@ -112,11 +119,11 @@ class Dresp(object):
     """Class for DRESP with methods to calculate absolute sensitivities
     from finite differences in RVs"""
 
-    def __init__(self, name, list_RV, mode = 0):
+    def __init__(self, name, list_RV, weights = [1]):
         self.name = name
         self.list_RV = list_RV
         self.numberOfDV = None
-        self.mode = mode
+        self.weights = weights
 
         self.mean = []
         self.dmean_dDV = []
@@ -237,7 +244,7 @@ class Dresp(object):
                 self.ddRV.append(0)
         return self.ddRV
 
-    def calculate_objective(self, cov, kappa, weights = [1]):
+    def calculate_objective(self, cov, kappa):
         """Calculate mean, sigma, objective and its derivative of DRESP."""
         self.dmean_x_dDV = np.zeros_like(self.dDV[0])
         self.dvar_x_dDV = np.zeros_like(self.dDV[0])
@@ -267,10 +274,10 @@ class Dresp(object):
             self.sigma.append(np.sqrt(self.var[mode]))
 
             # Compute moments of mixture distributions
-            self.mean_x += weights[mode] * self.mean[mode]
-            self.dmean_x_dDV += weights[mode] * self.dmean_dDV[mode]
-            self.var_x += weights[mode] * (self.mean[mode] ** 2 + self.var[mode])
-            self.dvar_x_dDV = weights[mode] * (2 * self.mean[mode] * self.dmean_dDV[mode] + self.dvar_dDV[mode])
+            self.mean_x += self.weights[mode] * self.mean[mode]
+            self.dmean_x_dDV += self.weights[mode] * self.dmean_dDV[mode]
+            self.var_x += self.weights[mode] * (self.mean[mode] ** 2 + self.var[mode])
+            self.dvar_x_dDV = self.weights[mode] * (2 * self.mean[mode] * self.dmean_dDV[mode] + self.dvar_dDV[mode])
 
         self.var_x -= self.mean_x ** 2
         self.dvar_x_dDV -= 2 * self.mean_x * self.dmean_x_dDV
@@ -315,18 +322,17 @@ class Dresp(object):
 
         with open(sens_file, "w") as f:
             if use_central_differences == False:
-                rv_indices = 2 * [RV.idx + 1 for RV in self.list_RV]
-                rv_indices.sort()
-
-                f.write(
-                    ",dresp, mean, sig, ,g_mu"
-                    + (max(rv_indices) * ", ,g_z{}_forw, dg_dz{}").format(*rv_indices)
-                    + "\n"
-                )
-                data_line = ",{},{},{}, ,{}".format(self.objective, self.mean, self.sigma, self.value[0])
-                for RV in self.list_RV:
-                    data_line += ", ,{},{}".format(self.value[RV.idx + 1], self.dRV[RV.idx])
-                data_line += "\n\n"
+                # Set up header and first data line of file
+                header = ",dresp, mean, sig,"
+                data_line = f",{self.objective},{self.mean_x},{self.sigma_x},"
+                for idx_mode, list_RV in enumerate(self.list_RV):
+                    header += f", , g_mu_m{idx_mode + 1}"
+                    data_line += f", ,{self.value[list_RV[0].reference_step]}"
+                    for RV in list_RV:
+                        header += f", g_z{RV.idx + 1}_m{idx_mode + 1}_forw, dg_dz{RV.idx + 1}_m{idx_mode + 1}"
+                        data_line += f", {self.value[RV.forward_step]}, {self.dRV[idx_mode][RV.idx]}"
+                header += "\n"
+                f.write(header)
                 f.write(data_line)
             elif use_central_differences == True:
                 rv_indices = 3 * [RV.idx + 1 for RV in self.list_RV]
@@ -356,8 +362,8 @@ class Dresp(object):
                             data_line.format(
                                 e,
                                 self.dObjective_dDV[e - 1],
-                                self.dmean_dDV[e - 1],
-                                self.dsigma_dDV[e - 1],
+                                self.dmean_x_dDV[e - 1],
+                                self.dsigma_x_dDV[e - 1],
                             )
                         )
                 else:
@@ -366,14 +372,14 @@ class Dresp(object):
                             data_line.format(
                                 e + 1,
                                 self.dObjective_dDV[e],
-                                self.dmean_dDV[e],
-                                self.dsigma_dDV[e],
+                                self.dmean_x_dDV[e],
+                                self.dsigma_x_dDV[e],
                             )
                         )
 
     def write_raw(self, dst):
         """Write out content read from tosca/abaqus for debugging purposes."""
-        file = os.path.join(dst, "DRESP_{}_{:03d}_raw.csv".format(self.name, self.mode))
+        file = os.path.join(dst, "DRESP_{}_raw.csv".format(self.name))
         with open(file, "w") as f:
             runs = len(self.value)
             header = (", run {:02d}" * runs).format(*list(range(runs)))
@@ -461,14 +467,14 @@ def main(args=None, cfg=None):
     # Create objects for DRESPs, read results and calculate partial derivatives wrt RVs
     # get DRESPS
     names = utils.read_names(resultsDRESP[0])
-    list_DRESP = [Dresp(name, list_RV) for name in names if "VOL" not in name if "MASS" not in name]
+    list_DRESP = [Dresp(name, list_RV, cfg.weights) for name in names if "VOL" not in name if "MASS" not in name]
     for dresp in list_DRESP:
         dresp.find_values(resultsDRESP)
         dresp.find_sensitivities(resultsSENS)
         if cfg.verbose:
             dresp.write_raw(args.result_dir)
         dresp.calculate_partial_derivatives()
-        dresp.calculate_objective(cov, float(cfg.kappa), cfg.weights)
+        dresp.calculate_objective(cov, float(cfg.kappa))
         dresp.write_output(
             dst=args.result_dir,
             elements=elements,
