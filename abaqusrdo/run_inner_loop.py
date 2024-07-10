@@ -30,11 +30,11 @@ def move_results(src, dst, verbose=False):
     print("Moving files containing DRESPs and sensitvities to Tosca work dir.", flush=True)
     result_files = glob.glob(os.path.join(src, "DRESP_*.onf"))
     for rf in result_files:
-        dst = os.path.join(dst, os.path.split(rf)[1])
+        dst_rf = os.path.join(dst, os.path.split(rf)[1])
         if verbose:
-            shutil.copy2(rf, dst)
+            shutil.copy2(rf, dst_rf)
         else:
-            shutil.move(rf, dst)
+            shutil.move(rf, dst_rf)
 
 
 def clean_input_dir(dir):
@@ -42,7 +42,6 @@ def clean_input_dir(dir):
     files = [os.path.join(dir, "__pycache__"),
         *glob.glob(os.path.join(dir, "*$py.class")),
         *glob.glob(os.path.join(dir, "*.pyc"))]
-    print(files)
     for fi in files:
         if os.path.exists(fi):
             if os.path.isdir(fi):
@@ -245,7 +244,7 @@ def main():
     cd.main(args, cfg)
 
     # Move results from inner loop to tosca work dir
-    move_results(job.result_dir, job.tosca_work_dir)
+    move_results(job.result_dir, job.tosca_work_dir, cfg.verbose)
     clean_input_dir(input_dir)
 
     print(f"Finished inner loop for cycle {args.cycle}.")
