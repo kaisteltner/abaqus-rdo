@@ -21,29 +21,31 @@ elements = []  # leave empty to write all dDRESPdDVdRV
 
 # --------------------------------------------------------------------#
 def get_covariance(list_RV, verbose):
-    """Set up of covarinace matrix. Edit non-diagonal parameters for correlated RVs"""
-    r = np.identity(len(list_RV))
+    """Set up of covarinace matrices for each list of RVs. Edit non-diagonal parameters for correlated RVs"""
+    cov = []
+    for m in range(len(list_RV)):
+        r = np.identity(len(list_RV[m]))
 
-    # edit symmetric entries corresponding to problem formulation
-    # r[0, 1] = 0.5
-    # r[1, 0] = r[0, 1]
-    # r[0, 3] = 0.5
-    # r[3, 0] = r[0, 3]
-    # r[1, 2] = 0.5
-    # r[2, 1] = r[1, 2]
-    # r[2, 3] = 0.5
-    # r[3, 2] = r[3, 2]
+        # edit symmetric entries corresponding to problem formulation
+        # r[0, 1] = 0.5
+        # r[1, 0] = r[0, 1]
+        # r[0, 3] = 0.5
+        # r[3, 0] = r[0, 3]
+        # r[1, 2] = 0.5
+        # r[2, 1] = r[1, 2]
+        # r[2, 3] = 0.5
+        # r[3, 2] = r[3, 2]
 
-    cov = r.copy()
-    for i, RV_i in enumerate(list_RV):
-        for j, RV_j in enumerate(list_RV):
-            cov[i, j] *= RV_i.sigma * RV_j.sigma
-    if verbose:
-        print("Correlation matrix: ")
-        print(r)
-        print("Covariance matrix: ")
-        print(cov)
-
+        cov_m = r.copy()
+        for i, RV_i in enumerate(list_RV[m]):
+            for j, RV_j in enumerate(list_RV[m]):
+                cov_m[i, j] *= RV_i.sigma * RV_j.sigma
+        if verbose:
+            print(f"Correlation matrix mode {m}: ")
+            print(r)
+            print(f"Covariance matrix mode {m}: ")
+            print(cov_m)
+        cov.append(cov_m)
     return cov
 
 
@@ -110,16 +112,25 @@ class Dresp(object):
     """Class for DRESP with methods to calculate absolute sensitivities
     from finite differences in RVs"""
 
-    def __init__(self, name, list_RV):
+    def __init__(self, name, list_RV, mode = 0):
         self.name = name
         self.list_RV = list_RV
         self.numberOfDV = None
+        self.mode = mode
 
-        self.mean = None
+        self.mean = []
         self.dmean_dDV = []
-        self.sigma = None
+        self.var = []
+        self.dvar_dDV = []
+        self.sigma = []
         self.dsigma_dDV = []
         self.cv = None
+        self.mean_x = 0
+        self.dmean_x_dDV = []
+        self.var_x = 0
+        self.dvar_x_dDV = []
+        self.sigma_x = 0
+        self.dsigma_x_dDV = []
         self.objective = None
         self.dObjective_dDV = []
 
@@ -166,54 +177,57 @@ class Dresp(object):
             self.dDV.append(np.asarray(TP_SENS_rows_split, dtype=float)[:, 1])
 
     def calculate_partial_derivatives(self):
-        self.__calculate_dRV()
-        self.__calculate_dRVdDV()
-        if self.list_RV[0].use_central_differences:  # including all second-order approaches
-            self.__calculate_ddRV()
+        for list_i in self.list_RV:
+            self.dRV.append(self.__calculate_dRV(list_i))
+            self.dRVdDV.append(self.__calculate_dRVdDV(list_i))
+            if list_i[0].use_central_differences:  # including all second-order approaches
+                self.ddRV.append(self.__calculate_ddRV(list_i))
 
-    def __calculate_dRV(self):
+    def __calculate_dRV(self, list_RV):
         """Calculate the derivatives of DRESP wrt. RV"""
-        if len(self.list_RV) > 0 and len(self.value) <= 1:
+        if len(list_RV) > 0 and len(self.value) <= 1:
             raise ValueError("Missing results from finite difference steps.")
 
-        for RV in self.list_RV:
+        dRV = []
+        for RV in list_RV:
             if not RV.use_central_differences:
                 if RV.delta != 0:
-                    self.dRV.append((1 / RV.delta) * (self.value[RV.forward_step] - self.value[0]))
+                    dRV.append((1 / RV.delta) * (self.value[RV.forward_step] - self.value[RV.reference_step]))
                 else:
-                    self.dRV.append(0)
+                    dRV.append(0)
             elif RV.use_central_differences:
                 if RV.delta != 0:
-                    self.dRV.append(
+                    dRV.append(
                         (1 / (2 * RV.delta)) * (self.value[RV.forward_step] - self.value[RV.backward_step])
                     )
                 else:
-                    self.dRV.append(0)
-        return self.dRV
+                    dRV.append(0)
+        return dRV
 
-    def __calculate_dRVdDV(self):
+    def __calculate_dRVdDV(self, list_RV):
         """Calculate the derivatives of dDRESPdDV wrt. RV"""
-        if len(self.list_RV) > 0 and len(self.dDV) <= 1:
+        if len(list_RV) > 0 and len(self.dDV) <= 1:
             raise ValueError("Missing results from finite difference steps.")
 
-        for RV in self.list_RV:
+        dRVdDV = []
+        for RV in list_RV:
             if not RV.use_central_differences:
                 if RV.delta != 0:
-                    self.dRVdDV.append((1 / RV.delta) * (self.dDV[RV.forward_step] - self.dDV[0]))
+                    dRVdDV.append((1 / RV.delta) * (self.dDV[RV.forward_step] - self.dDV[RV.reference_step]))
                 else:
-                    self.dRVdDV.append(np.zeros_like(self.dDV[0]))
+                    dRVdDV.append(np.zeros_like(self.dDV[RV.reference_step]))
             elif RV.use_central_differences:
                 if RV.delta != 0:
-                    self.dRVdDV.append(
+                    dRVdDV.append(
                         (1 / (2 * RV.delta)) * (self.dDV[RV.forward_step] - self.dDV[RV.backward_step])
                     )
                 else:
-                    self.dRVdDV.append(np.zeros_like(self.dDV[0]))
-        return self.dRVdDV
+                    dRVdDV.append(np.zeros_like(self.dDV[RV.reference_step]))
+        return dRVdDV
 
-    def __calculate_ddRV(self):
+    def __calculate_ddRV(self, list_RV):
         """Calculate the second-order derivatives of DRESP"""
-        for RV in self.list_RV:
+        for RV in list_RV:
             if RV.delta != 0:
                 self.ddRV.append(
                     (1 / (RV.delta**2))
@@ -223,37 +237,53 @@ class Dresp(object):
                 self.ddRV.append(0)
         return self.ddRV
 
-    def calculate_objective(self, cov, kappa):
+    def calculate_objective(self, cov, kappa, weights = [1]):
         """Calculate mean, sigma, objective and its derivative of DRESP."""
-        var = 0
-        dvar_dDV = [0]
+        self.dmean_x_dDV = np.zeros_like(self.dDV[0])
+        self.dvar_x_dDV = np.zeros_like(self.dDV[0])
 
-        self.mean = self.value[0]  # DRESP at mean of RVs
-        self.dmean_dDV = self.dDV[0]
+        # Calculate stochstic moments for each mode
+        for mode, list_RV in enumerate(self.list_RV):
+            self.mean.append(self.value[list_RV[0].reference_step])  # DRESP at mean of RVs through reference step of first RV in list
+            self.dmean_dDV.append(self.dDV[list_RV[0].reference_step])
 
-        for i in [RV.idx for RV in self.list_RV]:
-            # Correlated random variables
-            if not np.allclose(cov * np.linalg.inv(cov), np.identity(cov.shape[0])):
-                for j in [RV.idx for RV in self.list_RV if RV.idx >= i]:
-                    # j loop for considering correlation in fosm-variance
-                    var_loop = (self.dRV[i] * self.dRV[j]) * cov[i][j]
-                    dvar_loop = 2 * (np.multiply(self.dRVdDV[i], self.dRV[j]) * cov[i][j])
-                    var += var_loop
-                    dvar_dDV += dvar_loop
-            else:
-                # default: uncorrelated random variables
-                var += (self.dRV[i] ** 2) * cov[i][i]
-                dvar_dDV += 2 * self.dRV[i] * self.dRVdDV[i] * cov[i][i]
+            self.var.append(0)
+            self.dvar_dDV.append([0])
+            # Loop over RVs for MMFOSM mode
+            for i in [RV.idx for RV in list_RV]:
+                # Correlated random variables NOT IMPLEMENTED FOR MMFOSM
+                if not np.allclose(cov[mode] * np.linalg.inv(cov[mode]), np.identity(cov[mode].shape[0])):
+                    for j in [RV.idx for RV in self.list_RV if RV.idx >= i]:
+                        # j loop for considering correlation in fosm-variance
+                        var_loop = (self.dRV[i] * self.dRV[j]) * cov[mode][i][j]
+                        dvar_loop = 2 * (np.multiply(self.dRVdDV[i], self.dRV[j]) * cov[mode][i][j])
+                        self.var[mode] += var_loop
+                        self.dvar_dDV[mode] += dvar_loop
+                else:
+                    # default: uncorrelated random variables
+                    self.var[mode] += (self.dRV[mode][i] ** 2) * cov[mode][i][i]
+                    self.dvar_dDV[mode] += 2 * self.dRV[mode][i] * self.dRVdDV[mode][i] * cov[mode][i][i]
 
-        self.sigma = np.sqrt(var)
-        if var > 0:
-            self.dsigma_dDV = np.multiply(1 / (2.0 * self.sigma), dvar_dDV)
+            self.sigma.append(np.sqrt(self.var[mode]))
+
+            # Compute moments of mixture distributions
+            self.mean_x += weights[mode] * self.mean[mode]
+            self.dmean_x_dDV += weights[mode] * self.dmean_dDV[mode]
+            self.var_x += weights[mode] * (self.mean[mode] ** 2 + self.var[mode])
+            self.dvar_x_dDV = weights[mode] * (2 * self.mean[mode] * self.dmean_dDV[mode] + self.dvar_dDV[mode])
+
+        self.var_x -= self.mean_x ** 2
+        self.dvar_x_dDV -= 2 * self.mean_x * self.dmean_x_dDV
+
+        self.sigma_x = np.sqrt(self.var_x)
+        if self.var_x > 0:
+            self.dsigma_x_dDV = (np.multiply(1 / (2.0 * self.sigma_x), self.dvar_x_dDV))
         else:
-            self.dsigma_dDV = np.multiply(0, dvar_dDV)
-        self.cv = self.sigma / self.mean
+            self.dsigma_x_dDV.append(np.multiply(0, self.dvar_x_dDV))
+        self.cv = np.divide(self.sigma, self.mean)
 
-        self.objective = self.mean + kappa * self.sigma
-        self.dObjective_dDV = self.dmean_dDV + kappa * self.dsigma_dDV
+        self.objective = self.mean_x + kappa * self.sigma_x
+        self.dObjective_dDV = self.dmean_x_dDV + kappa * self.dsigma_x_dDV
 
     def write_output(self, dst, elements=[], use_central_differences=True, verbose=False):
         """Write output of current cycle to Isight-work directory and parent Tosca work directory.
@@ -343,7 +373,7 @@ class Dresp(object):
 
     def write_raw(self, dst):
         """Write out content read from tosca/abaqus for debugging purposes."""
-        file = os.path.join(dst, "DRESP_{}_raw.csv".format(self.name))
+        file = os.path.join(dst, "DRESP_{}_{:03d}_raw.csv".format(self.name, self.mode))
         with open(file, "w") as f:
             runs = len(self.value)
             header = (", run {:02d}" * runs).format(*list(range(runs)))
@@ -361,17 +391,23 @@ class RV(object):
 
     delta = 0
 
-    def __init__(self, idx, mean, sigma, delta, use_central_differences):
+    def __init__(self, idx, mean, sigma, delta, use_central_differences, reference_step = 0, forward_step=None):
         self.idx = idx
         self.mean = float(mean)
         self.sigma = float(sigma)
         self.delta = float(delta)
         self.use_central_differences = use_central_differences
-        if self.use_central_differences:
-            self.forward_step = 2 * (idx + 1)
-            self.backward_step = 2 * (idx + 1) - 1
+        self.reference_step = reference_step
+        if not forward_step:
+            # No number passed, automatic determination for FOSM
+            if self.use_central_differences:
+                self.forward_step = 2 * (idx + 1)
+                self.backward_step = 2 * (idx + 1) - 1
+            else:
+                self.forward_step = (idx + 1) * self.mode
         else:
-            self.forward_step = idx + 1
+            # Forward step from argument
+            self.forward_step = forward_step
 
     def __str__(self):
         msg = """Robustness Variable with parameters:\n
@@ -398,9 +434,24 @@ def main(args=None, cfg=None):
 
     # ------------------------------------------------------------------------------------#
     # Create objects for RVs and read results
+    number_of_modes = len(cfg.mean_rv)
+    run_ids = np.reshape(
+        range(number_of_modes * (cfg.number_of_rv + 1)), (number_of_modes, cfg.number_of_rv + 1)
+    )
     list_RV = [
-        RV(i, cfg.mean_rv[i], cfg.sigma_rv[i], cfg.delta_rv[i], cfg.use_central_differences)
-        for i in range(cfg.number_of_rv)
+        [
+            RV(
+                i,
+                cfg.mean_rv[mode][i],
+                cfg.sigma_rv[mode][i],
+                cfg.delta_rv[mode][i],
+                cfg.use_central_differences,
+                run_ids[mode][0],
+                run_ids[mode][i + 1],
+            )
+            for i in range(cfg.number_of_rv)
+        ]
+        for mode in range(len(cfg.mean_rv))
     ]
     cov = get_covariance(list_RV, cfg.verbose)
 
@@ -417,7 +468,7 @@ def main(args=None, cfg=None):
         if cfg.verbose:
             dresp.write_raw(args.result_dir)
         dresp.calculate_partial_derivatives()
-        dresp.calculate_objective(cov, float(cfg.kappa))
+        dresp.calculate_objective(cov, float(cfg.kappa), cfg.weights)
         dresp.write_output(
             dst=args.result_dir,
             elements=elements,
@@ -425,7 +476,6 @@ def main(args=None, cfg=None):
             verbose=cfg.verbose,
         )
     write_status(rdo_work_dir, list_DRESP, args.cycle, cfg.kappa)
-
 
 
 if __name__ == "__main__":

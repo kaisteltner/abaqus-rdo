@@ -10,6 +10,7 @@ import shutil
 import glob
 import utils
 import subprocess as sp
+import numpy as np
 
 import calculate_derivatives as cd
 
@@ -112,10 +113,16 @@ class IsightJob:
 
         self.runtime_dir = []
 
-        if self.use_central_differences:
-            total_runs = 2 * self.number_of_rv + 1
+        # MMFOSM: Split input distribution and perform multiple FOSM evaluations 
+        if np.ndim(self.mean_rv) == 1:
+            number_of_modes = 1
         else:
-            total_runs = self.number_of_rv + 1
+            number_of_modes = len(self.mean_rv)
+            
+        if self.use_central_differences:
+            total_runs = 2 * (self.number_of_rv + 1) * number_of_modes
+        else:
+            total_runs = (self.number_of_rv + 1) * number_of_modes
 
         for run in range(total_runs):
             rt_dir = os.path.join(self.tosca_dir, "run_{:03d}".format(run))
@@ -203,6 +210,14 @@ def main():
     # Get parameters from config file
     sys.path.append(input_dir)
     import config_rdo as cfg
+
+    # Error-check lists for mean_rv, sigma_rv and delta_rv
+    shape_mean = np.shape(np.array(cfg.mean_rv))
+    shape_sigma = np.shape(np.array(cfg.sigma_rv))
+    shape_delta = np.shape(np.array(cfg.delta_rv))
+    
+    if not (shape_mean == shape_sigma == shape_delta):
+        raise ValueError('Number of elements in data for RVs and weights do not match.')
 
     # Setup Isight job and start
     job = IsightJob(

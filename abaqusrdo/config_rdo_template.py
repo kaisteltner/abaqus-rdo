@@ -3,12 +3,16 @@
 
 number_of_rv = 2
 
-mean_rv = number_of_rv * [100]      # Or rv-specific: [100, 110]
-sigma_rv = number_of_rv * [1000]    # Or rv-specific: [1000, 900]
-delta_rv = number_of_rv * [1500]    # Or rv-specific: [1400, 1600]
+mean_rv = [[0, 2], [-1.1284, 2], [1.1284, 2]]                   # List of rv-specific mean values per FOSM mode
+sigma_rv = [[0.60281, 0.4], [0.60281, 0.4], [0.60281, 0.4]]     # List of rv-specific standard derivations per FOSM mode
+delta_rv = [[0.5, 0.6], [0.5, 0.6], [0.5, 0.6]]                 # List of rv-specific finite difference steps per FOSM mode
 
-use_central_differences = False
+use_central_differences = False # Central differences are not implemented for MMFOSM
 kappa = 1
+
+# Flag and weights for MMFOSM
+mmfosm = True
+weights = [0.3, 0.3, 0.3]
 
 # Set to true if running on windows machine, false if running on linux
 
