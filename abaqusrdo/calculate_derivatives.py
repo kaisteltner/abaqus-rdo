@@ -12,7 +12,7 @@ import sys
 import numpy as np
 import shutil
 from glob import glob
-import utils
+import abaqusrdo.utils as utils
 
 # --------------------------------------------------------------------#
 # List of elements to write specific sensitivities if running in verbose mode
@@ -277,7 +277,7 @@ class Dresp(object):
             self.mean_x += self.weights[mode] * self.mean[mode]
             self.dmean_x_dDV += self.weights[mode] * self.dmean_dDV[mode]
             self.var_x += self.weights[mode] * (self.mean[mode] ** 2 + self.var[mode])
-            self.dvar_x_dDV = self.weights[mode] * (2 * self.mean[mode] * self.dmean_dDV[mode] + self.dvar_dDV[mode])
+            self.dvar_x_dDV += self.weights[mode] * (2 * self.mean[mode] * self.dmean_dDV[mode] + self.dvar_dDV[mode])
 
         self.var_x -= self.mean_x ** 2
         self.dvar_x_dDV -= 2 * self.mean_x * self.dmean_x_dDV
