@@ -12,7 +12,8 @@ import sys
 import numpy as np
 import shutil
 from glob import glob
-import abaqusrdo.utils as utils
+
+import utils 
 
 # --------------------------------------------------------------------#
 # List of elements to write specific sensitivities if running in verbose mode
